@@ -8,11 +8,18 @@ import {AggregatorV3Interface} from "@chainlink/contracts/src/v0.8/interfaces/Ag
 import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import {console2} from "forge-std/console2.sol";
 
-error TransferFailed();
-error TokenNotAllowed(address token);
-error NeedsMoreThanZero();
-
 contract TokenLending is ReentrancyGuard, Ownable {
+    /*//////////////////////////////////////////////////////////////
+                             ERRORS
+    //////////////////////////////////////////////////////////////*/
+    error TransferFailed();
+    error TokenNotAllowed(address token);
+    error NeedsMoreThanZero();
+    error InsufficientLiquidity();
+
+    /*//////////////////////////////////////////////////////////////
+                             STATE VARIABLES
+    //////////////////////////////////////////////////////////////*/
     /**
      * @notice Maps tokens to their corresponding Chainlink price feed addresses
      */
@@ -35,7 +42,9 @@ contract TokenLending is ReentrancyGuard, Ownable {
      */
     mapping(address => mapping(address => uint256)) public s_accountToTokenBorrows;
 
-    // Constants
+    /*//////////////////////////////////////////////////////////////
+                             CONSTANTS
+    //////////////////////////////////////////////////////////////*/
 
     /**
      * @notice The percentage of the loan value that is given as a reward for liquidating a loan (5%)
@@ -52,7 +61,9 @@ contract TokenLending is ReentrancyGuard, Ownable {
      */
     uint256 public constant MIN_HEALTH_FACTOR = 1e18;
 
-    // Events
+    /*//////////////////////////////////////////////////////////////
+                             EVENTS
+    //////////////////////////////////////////////////////////////*/
 
     /**
      * @notice Emitted when a new token is allowed and its price feed is set
@@ -105,6 +116,32 @@ contract TokenLending is ReentrancyGuard, Ownable {
         address account, address repayToken, address rewardToken, uint256 halfDebtInEth, address liquidator
     );
 
+    /*//////////////////////////////////////////////////////////////
+                            Modifiers
+    //////////////////////////////////////////////////////////////*/
+
+    /**
+     * @notice Ensures the token is allowed for deposit and borrowing
+     * @param token The address of the token to check
+     */
+    modifier isAllowedToken(address token) {
+        if (s_tokenToPriceFeeds[token] == address(0)) revert TokenNotAllowed(token);
+        _;
+    }
+
+    /**
+     * @notice Ensures the amount specified is greater than zero
+     * @param amount The amount to check
+     */
+    modifier moreThanZero(uint256 amount) {
+        if (amount == 0) revert NeedsMoreThanZero();
+        _;
+    }
+
+    /*//////////////////////////////////////////////////////////////
+                             EXTERNAL FUNCTIONS
+    //////////////////////////////////////////////////////////////*/
+
     /**
      * @notice Deposits the specified token into the contract
      * @dev Emits a Deposit event on success
@@ -112,7 +149,10 @@ contract TokenLending is ReentrancyGuard, Ownable {
      * @param amount The amount of the token to deposit
      */
     function deposit(address token, uint256 amount) external nonReentrant isAllowedToken(token) moreThanZero(amount) {
-        // fill in function here...
+        s_accountToTokenDeposits[msg.sender][token] += amount;
+        emit Deposit(msg.sender, token, amount);
+        bool success = IERC20(token).transferFrom(msg.sender, address(this), amount);
+        if (!success) revert TransferFailed();
     }
 
     /**
@@ -142,7 +182,11 @@ contract TokenLending is ReentrancyGuard, Ownable {
      * @param amount The amount of the token to borrow
      */
     function borrow(address token, uint256 amount) external nonReentrant isAllowedToken(token) moreThanZero(amount) {
-        // fill in function here...
+        if (IERC20(token).balanceOf(address(this)) < amount) revert InsufficientLiquidity();
+        s_accountToTokenBorrows[msg.sender][token] += amount;
+        emit Borrow(msg.sender, token, amount);
+        bool success = IERC20(token).transfer(msg.sender, amount);
+        if (!success) revert TransferFailed();
     }
 
     /**
@@ -235,24 +279,6 @@ contract TokenLending is ReentrancyGuard, Ownable {
      */
     function healthFactor(address account) public view returns (uint256) {
         // fill in function here...
-    }
-
-    // Modifiers
-
-    /**
-     * @notice Ensures the token is allowed for deposit and borrowing
-     * @param token The address of the token to check
-     */
-    modifier isAllowedToken(address token) {
-        _;
-    }
-
-    /**
-     * @notice Ensures the amount specified is greater than zero
-     * @param amount The amount to check
-     */
-    modifier moreThanZero(uint256 amount) {
-        _;
     }
 
     // DAO / OnlyOwner Functions
