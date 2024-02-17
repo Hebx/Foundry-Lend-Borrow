@@ -2,10 +2,11 @@
 // This contract is not audited!!!
 pragma solidity ^0.8.7;
 
-import "@openzeppelin/contracts/security/ReentrancyGuard.sol";
-import "@openzeppelin/contracts/access/Ownable.sol";
-import "@chainlink/contracts/src/v0.8/interfaces/AggregatorV3Interface.sol";
-import "@openzeppelin/contracts/token/ERC20/IERC20.sol";
+import {ReentrancyGuard} from "@openzeppelin/contracts/security/ReentrancyGuard.sol";
+import {Ownable} from "@openzeppelin/contracts/access/Ownable.sol";
+import {AggregatorV3Interface} from "@chainlink/contracts/src/v0.8/interfaces/AggregatorV3Interface.sol";
+import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
+import {console2} from "forge-std/console2.sol";
 
 error TransferFailed();
 error TokenNotAllowed(address token);
@@ -15,41 +16,41 @@ contract TokenLending is ReentrancyGuard, Ownable {
     /**
      * @notice Maps tokens to their corresponding Chainlink price feed addresses
      */
-    // fill mapping here...
+    mapping(address => address) public s_tokenToPriceFeeds;
 
     /**
      * @notice List of ERC20 tokens allowed for deposit and borrowing
      */
-    // define list(array) here...
+    address[] public s_allowedTokens;
 
     /**
      * @notice Nested mapping to track the amount of each token deposited by each account
      * @dev Account -> Token -> Amount
      */
-    // fill mapping here...
+    mapping(address => mapping(address => uint256)) public s_accountToTokenDeposits;
 
     /**
      * @notice Nested mapping to track the amount of each token borrowed by each account
      * @dev Account -> Token -> Amount
      */
-    // fill mapping here...
+    mapping(address => mapping(address => uint256)) public s_accountToTokenBorrows;
 
     // Constants
 
     /**
      * @notice The percentage of the loan value that is given as a reward for liquidating a loan (5%)
      */
-    // define constant here...
+    uint256 public constant LIQUIDATION_REWARD = 5;
 
     /**
      * @notice The loan-to-value ratio at which a loan becomes eligible for liquidation (80%)
      */
-    // define constant here...
+    uint256 public constant LIQUIDATION_THRESHOLD = 80;
 
     /**
      * @notice The minimum health factor required to avoid liquidation (1e18)
      */
-    // define constant here...
+    uint256 public constant MIN_HEALTH_FACTOR = 1e18;
 
     // Events
 
@@ -58,7 +59,7 @@ contract TokenLending is ReentrancyGuard, Ownable {
      * @param token The ERC20 token address
      * @param priceFeed The Chainlink price feed address for the token
      */
-    // define event here...
+    event AllowedTokenSet(address token, address priceFeed);
 
     /**
      * @notice Emitted when a user deposits tokens
@@ -66,7 +67,7 @@ contract TokenLending is ReentrancyGuard, Ownable {
      * @param token The ERC20 token being deposited
      * @param amount The amount of tokens deposited
      */
-    // define event here...
+    event Deposit(address account, address token, uint256 amount);
 
     /**
      * @notice Emitted when a user borrows tokens
@@ -74,7 +75,7 @@ contract TokenLending is ReentrancyGuard, Ownable {
      * @param token The ERC20 token being borrowed
      * @param amount The amount of tokens borrowed
      */
-    // define event here...
+    event Borrow(address account, address token, uint256 amount);
 
     /**
      * @notice Emitted when a user withdraws tokens
@@ -82,7 +83,7 @@ contract TokenLending is ReentrancyGuard, Ownable {
      * @param token The ERC20 token being withdrawn
      * @param amount The amount of tokens withdrawn
      */
-    // define event here...
+    event Withdraw(address account, address token, uint256 amount);
 
     /**
      * @notice Emitted when a user repays borrowed tokens
@@ -90,7 +91,7 @@ contract TokenLending is ReentrancyGuard, Ownable {
      * @param token The ERC20 token being repaid
      * @param amount The amount of tokens repaid
      */
-    // define event here...
+    event Repay(address account, address token, uint256 amount);
 
     /**
      * @notice Emitted when a user's debt position is liquidated
@@ -100,7 +101,9 @@ contract TokenLending is ReentrancyGuard, Ownable {
      * @param halfDebtInEth The ETH value of half of the user's debt
      * @param liquidator The address of the user performing the liquidation
      */
-    // define event here...
+    event Liquidate(
+        address account, address repayToken, address rewardToken, uint256 halfDebtInEth, address liquidator
+    );
 
     /**
      * @notice Deposits the specified token into the contract
@@ -241,7 +244,7 @@ contract TokenLending is ReentrancyGuard, Ownable {
      * @param token The address of the token to check
      */
     modifier isAllowedToken(address token) {
-        // fill in modifier here...
+        _;
     }
 
     /**
@@ -249,7 +252,7 @@ contract TokenLending is ReentrancyGuard, Ownable {
      * @param amount The amount to check
      */
     modifier moreThanZero(uint256 amount) {
-        // fill in modifier here...
+        _;
     }
 
     // DAO / OnlyOwner Functions
