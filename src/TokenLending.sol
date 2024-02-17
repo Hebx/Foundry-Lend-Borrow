@@ -18,6 +18,8 @@ contract TokenLending is ReentrancyGuard, Ownable {
     error InsufficientLiquidity();
     error InsufficientFunds();
     error Low_Health_Factor();
+    error RepayedTooMuch();
+    error NoDebtToPay();
 
     /*//////////////////////////////////////////////////////////////
                              STATE VARIABLES
@@ -205,7 +207,17 @@ contract TokenLending is ReentrancyGuard, Ownable {
      * @param rewardToken The address of the ERC20 token to reward the liquidator
      */
     function liquidate(address account, address repayToken, address rewardToken) external nonReentrant {
-        // fill in function here...
+        if (MIN_HEALTH_FACTOR <= healthFactor(account)) revert Low_Health_Factor();
+        uint256 halfDebt = s_accountToTokenBorrows[account][repayToken] / 2;
+        if (halfDebt <= 0) revert NoDebtToPay();
+        uint256 halfDebtInEth = getEthValue(repayToken, halfDebt);
+        if (halfDebtInEth <= 0) revert NoDebtToPay();
+        uint256 rewardAmountInEth = (halfDebtInEth * LIQUIDATION_REWARD) / 100;
+        uint256 totalRewardAmountInRewardToken = getTokenValueFromEth(rewardToken, rewardAmountInEth + halfDebtInEth);
+        emit Liquidate(account, repayToken, rewardToken, halfDebtInEth, msg.sender);
+
+        _repay(account, repayToken, halfDebtInEth);
+        _pullFunds(msg.sender, rewardToken, totalRewardAmountInRewardToken);
     }
 
     /**
@@ -215,7 +227,8 @@ contract TokenLending is ReentrancyGuard, Ownable {
      * @param amount The amount of the token to repay
      */
     function repay(address token, uint256 amount) external nonReentrant isAllowedToken(token) moreThanZero(amount) {
-        // fill in function here...
+        emit Repay(msg.sender, token, amount);
+        _repay(msg.sender, token, amount);
     }
 
     /**
@@ -225,7 +238,10 @@ contract TokenLending is ReentrancyGuard, Ownable {
      * @param amount The amount of the token to repay
      */
     function _repay(address account, address token, uint256 amount) private {
-        // fill in function here...
+        if (s_accountToTokenBorrows[account][token] < amount) revert RepayedTooMuch();
+        s_accountToTokenBorrows[account][token] -= amount;
+        bool success = IERC20(token).transferFrom(account, address(this), amount);
+        if (!success) revert TransferFailed();
     }
 
     /**
@@ -267,7 +283,9 @@ contract TokenLending is ReentrancyGuard, Ownable {
      * @return The equivalent value in ETH
      */
     function getEthValue(address token, uint256 amount) public view returns (uint256) {
-        // fill in function here...
+        AggregatorV3Interface priceFeed = AggregatorV3Interface(s_tokenToPriceFeeds[token]);
+        (, int256 price,,,) = priceFeed.latestRoundData();
+        return (amount * uint256(price)) / 1e18;
     }
 
     /**
@@ -277,7 +295,9 @@ contract TokenLending is ReentrancyGuard, Ownable {
      * @return The equivalent value in the specified token
      */
     function getTokenValueFromEth(address token, uint256 amount) public view returns (uint256) {
-        // fill in function here...
+        AggregatorV3Interface priceFeed = AggregatorV3Interface(s_tokenToPriceFeeds[token]);
+        (, int256 price,,,) = priceFeed.latestRoundData();
+        return (amount * 1e18) / uint256(price);
     }
 
     /**
