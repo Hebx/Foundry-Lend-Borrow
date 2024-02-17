@@ -16,6 +16,8 @@ contract TokenLending is ReentrancyGuard, Ownable {
     error TokenNotAllowed(address token);
     error NeedsMoreThanZero();
     error InsufficientLiquidity();
+    error InsufficientFunds();
+    error Low_Health_Factor();
 
     /*//////////////////////////////////////////////////////////////
                              STATE VARIABLES
@@ -162,7 +164,10 @@ contract TokenLending is ReentrancyGuard, Ownable {
      * @param amount The amount of the token to withdraw
      */
     function withdraw(address token, uint256 amount) external nonReentrant moreThanZero(amount) {
-        // fill in function here...
+        if (s_accountToTokenDeposits[msg.sender][token] < amount) revert InsufficientFunds();
+        if (MIN_HEALTH_FACTOR > healthFactor(msg.sender)) revert Low_Health_Factor();
+        emit Withdraw(msg.sender, token, amount);
+        _pullFunds(msg.sender, token, amount);
     }
 
     /**
@@ -172,7 +177,10 @@ contract TokenLending is ReentrancyGuard, Ownable {
      * @param amount The amount of the token to withdraw
      */
     function _pullFunds(address account, address token, uint256 amount) private {
-        // fill in function here...
+        if (s_accountToTokenDeposits[account][token] < amount) revert InsufficientFunds();
+        s_accountToTokenDeposits[account][token] -= amount;
+        bool success = IERC20(token).transfer(account, amount);
+        if (!success) revert TransferFailed();
     }
 
     /**
