@@ -255,7 +255,8 @@ contract TokenLending is ReentrancyGuard, Ownable {
         view
         returns (uint256 borrowedValueInETH, uint256 collateralValueInETH)
     {
-        // fill in function here...
+        borrowedValueInETH = getAccountBorrowedValue(user);
+        collateralValueInETH = getAccountCollateralValue(user);
     }
 
     /**
@@ -264,7 +265,14 @@ contract TokenLending is ReentrancyGuard, Ownable {
      * @return The total collateral value in ETH
      */
     function getAccountCollateralValue(address user) public view returns (uint256) {
-        // fill in function here...
+        uint256 totalCollateralValueInEth = 0;
+        for (uint256 i = 0; i < s_allowedTokens.length; i++) {
+            address token = s_allowedTokens[i];
+            uint256 amount = s_accountToTokenDeposits[user][token];
+            uint256 valueInEth = getEthValue(token, amount);
+            totalCollateralValueInEth += valueInEth;
+        }
+        return totalCollateralValueInEth;
     }
 
     /**
@@ -273,7 +281,14 @@ contract TokenLending is ReentrancyGuard, Ownable {
      * @return The total borrowed value in ETH
      */
     function getAccountBorrowedValue(address user) public view returns (uint256) {
-        // fill in function here...
+        uint256 totalBorrowsValueInEth = 0;
+        for (uint256 i = 0; i < s_allowedTokens.length; i++) {
+            address token = s_allowedTokens[i];
+            uint256 amount = s_accountToTokenBorrows[user][token];
+            uint256 valueInEth = getEthValue(token, amount);
+            totalBorrowsValueInEth += valueInEth;
+        }
+        return totalBorrowsValueInEth;
     }
 
     /**
@@ -306,7 +321,10 @@ contract TokenLending is ReentrancyGuard, Ownable {
      * @return The health factor of the account
      */
     function healthFactor(address account) public view returns (uint256) {
-        // fill in function here...
+        (uint256 borrowedValueInETH, uint256 collateralValueInETH) = getAccountInformation(account);
+        uint256 collateralAdjustedForThreshold = (collateralValueInETH * LIQUIDATION_THRESHOLD) / 100;
+        if (borrowedValueInETH == 0) return 100e18;
+        return (collateralAdjustedForThreshold * 1e18) / borrowedValueInETH;
     }
 
     // DAO / OnlyOwner Functions
@@ -317,6 +335,16 @@ contract TokenLending is ReentrancyGuard, Ownable {
      * @param priceFeed The address of the Chainlink price feed for the token
      */
     function setAllowedToken(address token, address priceFeed) external onlyOwner {
-        // fill in function here...
+        bool foundToken = false;
+        uint256 allowedTokensLength = s_allowedTokens.length;
+        for (uint256 index = 0; index < allowedTokensLength; index++) {
+            if (s_allowedTokens[index] == token) {
+                foundToken = true;
+                break;
+            }
+        }
+        if (!foundToken) s_allowedTokens.push(token);
+        s_tokenToPriceFeeds[token] = priceFeed;
+        emit AllowedTokenSet(token, priceFeed);
     }
 }
